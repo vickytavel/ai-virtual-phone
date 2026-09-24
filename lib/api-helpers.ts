@@ -218,16 +218,21 @@ export async function simpleLLMCall(
     }
 }
 
-export function extractUsage(data: Record<string, unknown>): { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined {
+export function extractUsage(data: Record<string, unknown>): { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cached_tokens?: number } | undefined {
     if (!data) return undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const d = data as any;
-    const usage = d?.usage ?? d?.output?.usage ?? d?.candidates?.[0]?.usageMetadata;
+    const usage = d?.usage ?? d?.output?.usage ?? d?.candidates?.[0]?.usageMetadata ?? d?.usageMetadata;
     if (!usage) return undefined;
+    const cached = usage.cached_tokens
+        ?? usage.cache_read_input_tokens
+        ?? usage.cachedContentTokenCount
+        ?? usage.prompt_tokens_details?.cached_tokens;
     return {
         prompt_tokens: usage.prompt_tokens ?? usage.input_tokens ?? usage.promptTokenCount,
         completion_tokens: usage.completion_tokens ?? usage.output_tokens ?? usage.candidatesTokenCount,
         total_tokens: usage.total_tokens ?? usage.totalTokenCount,
+        cached_tokens: typeof cached === "number" ? cached : undefined,
     };
 }
 

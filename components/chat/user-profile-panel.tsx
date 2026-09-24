@@ -764,7 +764,10 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
                                                 <div className="menu-desc mt-1 flex gap-3 flex-wrap">
                                                     {log.model && <span>Model: {log.model}</span>}
                                                     {log.usage && (
-                                                        <span>Tokens: {log.usage.prompt_tokens ?? "—"} / {log.usage.completion_tokens ?? "—"} / {log.usage.total_tokens ?? "—"}</span>
+                                                        <span>
+                                                            Tokens: 输入 {log.usage.prompt_tokens ?? "—"} / 输出 {log.usage.completion_tokens ?? "—"} / 合计 {log.usage.total_tokens ?? "—"}
+                                                            {typeof log.usage.cached_tokens === "number" && log.usage.cached_tokens > 0 ? ` · 缓存命中 ${log.usage.cached_tokens}` : ""}
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>

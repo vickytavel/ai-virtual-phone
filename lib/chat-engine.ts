@@ -51,7 +51,25 @@ import {
     type LlmToolCall,
     type LlmToolCallDelta,
     type LlmToolDefinition,
+    type LlmUsage,
 } from "./llm-provider-adapter";
+
+/** 流式 usage 合并：Anthropic 输入/输出分两个事件到达；后到的字段覆盖，缺失字段保留旧值。
+ *  两侧齐全时重算 total，避免 message_start 处「输入+1」的瞬时 total 被当成最终值。 */
+function mergeStreamUsage(acc: LlmUsage | undefined, next: LlmUsage | undefined): LlmUsage | undefined {
+    if (!next) return acc;
+    if (!acc) return next;
+    const prompt_tokens = next.prompt_tokens ?? acc.prompt_tokens;
+    const completion_tokens = next.completion_tokens ?? acc.completion_tokens;
+    const cached_tokens = next.cached_tokens ?? acc.cached_tokens;
+    const bothSides = prompt_tokens !== undefined && completion_tokens !== undefined;
+    const total_tokens = bothSides
+        ? prompt_tokens + completion_tokens
+        : (next.total_tokens ?? acc.total_tokens);
+    const merged: LlmUsage = { prompt_tokens, completion_tokens, total_tokens };
+    if (cached_tokens !== undefined) merged.cached_tokens = cached_tokens;
+    return merged;
+}
 import { setDebugPromptSnapshot, type DebugPromptSnapshot } from "./debug-store";
 import { extractFinishReason } from "./api-helpers";
 import { fetchLlmPayload } from "./llm-http";
@@ -719,7 +737,7 @@ async function readSseStream(
     providerKind: ChatCompletionStreamResult["providerKind"],
     callbacks?: ChatCompletionStreamCallbacks,
     stripTimestamps = true,
-): Promise<{ content: string; rawResponse: string }> {
+): Promise<{ content: string; rawResponse: string; usage?: LlmUsage }> {
     if (!response.body) throw new ChatEngineError("流式响应没有 body。");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -735,8 +753,10 @@ async function readSseStream(
 
     // 容错解析：中转把长 JSON 行切开时做碎片重组，不再静默丢增量（见 sse-json.ts）
     const sseParser = createSseJsonParser();
+    let streamUsage: LlmUsage | undefined;
     const handleParsed = async (parsed: unknown) => {
         const parts = parseProviderStreamDelta(providerKind, parsed);
+        if (parts.usage) streamUsage = mergeStreamUsage(streamUsage, parts.usage);
         if (parts.reasoning) {
             await callbacks?.onReasoningDelta?.(parts.reasoning);
         }
@@ -778,7 +798,7 @@ async function readSseStream(
         content += finalContent;
         await callbacks?.onDelta?.(finalContent);
     }
-    return { content, rawResponse };
+    return { content, rawResponse, usage: streamUsage };
 }
 
 export async function sendLLMStreamRequest(
@@ -835,7 +855,7 @@ export async function sendLLMStreamRequest(
                 await (pluginCallbacks ?? callbacks)?.onReasoningDelta?.(text);
             },
         };
-        const { content: streamedContent, rawResponse } = await readSseStream(response, request.providerKind, streamLogCallbacks, !options?.skipTimestampStrip);
+        const { content: streamedContent, rawResponse, usage: streamUsage } = await readSseStream(response, request.providerKind, streamLogCallbacks, !options?.skipTimestampStrip);
         if (!streamedContent.trim()) {
             throw new ChatEngineError("流式响应没有解析到文本增量。");
         }
@@ -854,6 +874,7 @@ export async function sendLLMStreamRequest(
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: rawOutput,
+            usage: streamUsage,
             reasoning: streamedReasoning.trim() || undefined,
         });
 
@@ -1109,6 +1130,7 @@ export async function sendLLMToolStreamRequest(
     let rawResponse = "";
     let content = "";
     let reasoning = "";
+    let toolStreamUsage: LlmUsage | undefined;
     const contentStripper = createStreamingTimestampStripper();
     const toolDrafts = new Map<number, StreamToolCallDraft>();
     const firedToolCallStarts = new Set<number>();
@@ -1131,6 +1153,7 @@ export async function sendLLMToolStreamRequest(
         const handleParsedDelta = async (data: unknown) => {
             {
                     const delta = parseProviderStreamDelta(request.providerKind, data);
+                    if (delta.usage) toolStreamUsage = mergeStreamUsage(toolStreamUsage, delta.usage);
                     if (delta.reasoning) {
                         reasoning += delta.reasoning;
                         await callbacks?.onReasoningDelta?.(delta.reasoning);
@@ -1205,6 +1228,7 @@ export async function sendLLMToolStreamRequest(
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: logEntryRaw,
+            usage: toolStreamUsage,
             reasoning: reasoning || undefined,
         });
 

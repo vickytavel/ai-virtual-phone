@@ -1660,7 +1660,8 @@ function QaApiLogSheet({ onClose, onNotice }: { onClose: () => void; onNotice?: 
                             {log.model ? `Model: ${log.model}` : ""}
                             {log.model && log.messages.length ? " · " : ""}
                             {log.messages.length} 条消息
-                            {log.usage ? ` · Tokens: ${log.usage.prompt_tokens ?? "—"} / ${log.usage.completion_tokens ?? "—"} / ${log.usage.total_tokens ?? "—"}` : ""}
+                            {log.usage ? ` · Tokens: 输入 ${log.usage.prompt_tokens ?? "—"} / 输出 ${log.usage.completion_tokens ?? "—"} / 合计 ${log.usage.total_tokens ?? "—"}` : ""}
+                            {typeof log.usage?.cached_tokens === "number" && log.usage.cached_tokens > 0 ? ` · 缓存命中 ${log.usage.cached_tokens}` : ""}
                           </span>
                         </div>
                         <ChevronRight size={15} className={isOpen ? "qa-log-chevron-open" : ""} />

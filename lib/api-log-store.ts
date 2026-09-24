@@ -12,7 +12,8 @@ export type DebugInfo = {
     messages: { role: string; content: string; marker?: string }[];
     rawResponse: string;
     timestamp: string;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    /** 真实用量（API 返回）：输入/输出/合计 + 缓存命中（cached_tokens）。缺省 = 该路径没解析到 usage。 */
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cached_tokens?: number };
     /** 模型思维链（reasoning/CoT）原文，独立于回复内容存储，避免被清洗吞掉 */
     reasoning?: string;
     /** 调用来源：chat=聊天引擎、background=simpleLLMCall 后台功能（具体功能名看 characterName 标签）、qa=工坊答疑引擎 */
