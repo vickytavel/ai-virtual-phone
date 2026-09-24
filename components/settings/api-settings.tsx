@@ -43,6 +43,8 @@ export function ApiSettings() {
     const [isFetching, setIsFetching] = useState<Record<string, boolean>>({});
     const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
     const [isTesting, setIsTesting] = useState<Record<string, boolean>>({});
+    // 编辑弹窗里「手动把模型名加进列表」的临时输入
+    const [manualModel, setManualModel] = useState("");
     const [testResult, setTestResult] = useState<Record<string, { success: boolean; message: string }>>({});
 
     // Load from localStorage on mount
@@ -152,7 +154,9 @@ export function ApiSettings() {
                 throw new Error("返回数据格式不符合预期");
             }
             setFetchedModels(prev => ({ ...prev, [config.id]: modelNames }));
-            setTestResult(prev => ({ ...prev, [config.id]: { success: true, message: `成功获取 ${modelNames.length} 个模型` } }));
+            // 拉取成功即持久化到配置：之后无需重新拉取，直接在卡片/弹窗里切换模型
+            updateConfig(config.id, { models: modelNames });
+            setTestResult(prev => ({ ...prev, [config.id]: { success: true, message: `成功获取 ${modelNames.length} 个模型，已存入模型列表` } }));
         } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : String(error);
             setTestResult(prev => ({ ...prev, [config.id]: { success: false, message: `拉取失败: ${msg}` } }));
@@ -251,7 +255,36 @@ export function ApiSettings() {
                         >
                             <div className="min-w-0 flex flex-col gap-1">
                                 <span className="truncate text-[calc(14.4px*var(--app-text-scale,1))] font-bold leading-tight text-[var(--c-text-title)]">{config.name || config.provider}</span>
-                                <span className="menu-desc truncate">{config.defaultModel || config.provider || "未设置模型"}</span>
+                                {(() => {
+                                    const options = Array.from(new Set([
+                                        ...(config.models || []),
+                                        ...(config.defaultModel ? [config.defaultModel] : []),
+                                    ]));
+                                    // 列表里有多个可选模型时，卡片上直接给切换入口；否则显示静态模型名
+                                    if (options.length > 1) {
+                                        return (
+                                            <select
+                                                value={config.defaultModel || ""}
+                                                onClick={(event) => event.stopPropagation()}
+                                                onKeyDown={(event) => event.stopPropagation()}
+                                                onChange={(event) => {
+                                                    event.stopPropagation();
+                                                    const value = event.target.value;
+                                                    if (value) updateConfig(config.id, { defaultModel: value });
+                                                }}
+                                                className="ui-select w-full min-w-0"
+                                                style={{ padding: "4px 8px", fontSize: "calc(12px*var(--app-text-scale,1))" }}
+                                                aria-label={`切换 ${config.name || config.provider} 的模型`}
+                                            >
+                                                {!config.defaultModel && <option value="">选择模型...</option>}
+                                                {options.map(m => (
+                                                    <option key={m} value={m}>{m}</option>
+                                                ))}
+                                            </select>
+                                        );
+                                    }
+                                    return <span className="menu-desc truncate">{config.defaultModel || config.provider || "未设置模型"}</span>;
+                                })()}
                             </div>
                             <div className="flex gap-2 shrink-0 items-center justify-end">
                                 <button
@@ -442,27 +475,78 @@ export function ApiSettings() {
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">默认模型 (Default Model)</label>
                                             <div className="flex gap-2">
-                                                {fetchedModels[config.id] && fetchedModels[config.id].length > 0 ? (
-                                                    <select
-                                                        value={config.defaultModel}
-                                                        onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                        className="ui-select flex-1"
-                                                    >
-                                                        <option value="">请选择模型...</option>
-                                                        {fetchedModels[config.id].map(m => (
-                                                            <option key={m} value={m}>{m}</option>
-                                                        ))}
-                                                    </select>
-                                                ) : (
+                                                {(() => {
+                                                    // 已保存的模型列表 ∪ 本次会话拉取的结果（拉取成功时已持久化到 config.models）
+                                                    const options = Array.from(new Set([
+                                                        ...(config.models || []),
+                                                        ...(fetchedModels[config.id] || []),
+                                                        ...(config.defaultModel ? [config.defaultModel] : []),
+                                                    ]));
+                                                    if (options.length > 0) {
+                                                        return (
+                                                            <select
+                                                                value={config.defaultModel}
+                                                                onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
+                                                                className="ui-select flex-1"
+                                                            >
+                                                                {!config.defaultModel && <option value="">请选择模型...</option>}
+                                                                {options.map(m => (
+                                                                    <option key={m} value={m}>{m}</option>
+                                                                ))}
+                                                            </select>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <input
+                                                            type="text"
+                                                            value={config.defaultModel}
+                                                            onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
+                                                            placeholder="gpt-4o, claude-3-opus..."
+                                                            className="ui-input flex-1"
+                                                        />
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            {/* 手动维护模型列表：中转站不支持 /models 时也能攒出可切换列表 */}
+                                            <div className="flex gap-2 mt-1">
                                                     <input
                                                         type="text"
-                                                        value={config.defaultModel}
-                                                        onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                        placeholder="gpt-4o, claude-3-opus..."
+                                                        value={manualModel}
+                                                        onChange={(e) => setManualModel(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key !== "Enter") return;
+                                                            e.preventDefault();
+                                                            const name = manualModel.trim();
+                                                            if (!name) return;
+                                                            updateConfig(config.id, {
+                                                                models: Array.from(new Set([...(config.models || []), name])),
+                                                                defaultModel: name,
+                                                            });
+                                                            setManualModel("");
+                                                        }}
+                                                        placeholder="手动添加模型名..."
                                                         className="ui-input flex-1"
                                                     />
-                                                )}
-                                            </div>
+                                                    <button
+                                                        type="button"
+                                                        className="ui-btn ui-btn-soft-action shrink-0"
+                                                        onClick={() => {
+                                                            const name = manualModel.trim();
+                                                            if (!name) return;
+                                                            updateConfig(config.id, {
+                                                                models: Array.from(new Set([...(config.models || []), name])),
+                                                                defaultModel: name,
+                                                            });
+                                                            setManualModel("");
+                                                        }}
+                                                    >
+                                                        加入列表
+                                                    </button>
+                                                </div>
+                                            <span className="menu-desc ml-1" style={{ opacity: 0.7 }}>
+                                                「拉取模型列表」会把该链接下的模型存进来；之后在配置卡片上即可直接切换模型，无需复制多份配置。
+                                            </span>
                                         </div>
 
                                         <div className="flex gap-3 mt-1">

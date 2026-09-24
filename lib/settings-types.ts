@@ -159,6 +159,11 @@ export type ApiConfig = {
      * 键值都为空白的条目会被忽略；同名键会覆盖内置头（方便中转站纠正鉴权方式）。
      */
     customHeaders?: Record<string, string>;
+    /**
+     * 该配置（同一 Base URL + API Key）下保存的可选模型列表，用于一键切换。
+     * 「拉取模型列表」成功后自动持久化；defaultModel 始终是当前生效的模型。
+     */
+    models?: string[];
 };
 
 // --- VoiceApiConfig (migrated from voice-settings.tsx) ---
