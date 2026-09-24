@@ -65,6 +65,15 @@ export function buildRequestHeaders(config: ApiConfig, baseUrl: string): Record<
         headers["X-Title"] = "AI Virtual Phone";
     }
 
+    // 用户自定义请求头：最后合并，可覆盖上面的内置头。
+    // 用于 OpenCode Go 要求的 x-opencode-session，以及自建网关需要的额外鉴权/路由头。
+    if (config.customHeaders) {
+        for (const [key, value] of Object.entries(config.customHeaders)) {
+            const k = key.trim();
+            if (!k || value == null || String(value).trim() === "") continue;
+            headers[k] = String(value).trim();
+        }
+    }
     return headers;
 }
 
@@ -420,3 +429,4 @@ export function extractReasoningContent(data: Record<string, unknown>): string {
 
     return "";
 }
+

@@ -153,6 +153,12 @@ export type ApiConfig = {
     enableImageRecognition: boolean;
     enableImageGeneration: boolean;
     preventEmptyGenerateRambling?: boolean;
+    /**
+     * 用户自定义请求头，会合并进该配置的每一次 LLM 请求。
+     * 典型用途：OpenCode Go 要求携带 x-opencode-session；自建网关需要额外鉴权/路由头。
+     * 键值都为空白的条目会被忽略；同名键会覆盖内置头（方便中转站纠正鉴权方式）。
+     */
+    customHeaders?: Record<string, string>;
 };
 
 // --- VoiceApiConfig (migrated from voice-settings.tsx) ---
@@ -434,3 +440,4 @@ export type InternalCapabilityConfig = {
     createdAt: number;
     updatedAt: number;
 };
+

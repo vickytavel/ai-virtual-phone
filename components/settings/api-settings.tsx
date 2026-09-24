@@ -360,6 +360,85 @@ export function ApiSettings() {
                                             />
                                         </div>
 
+                                        {/* 自定义请求头：OpenCode Go 的 x-opencode-session、自建网关的额外鉴权/路由头 */}
+                                        <div className="flex flex-col gap-1">
+                                            <label className="menu-desc ml-1">
+                                                自定义请求头 (Custom Headers)
+                                                <span style={{ color: "#888", marginLeft: 6, fontSize: "0.85em" }}>
+                                                    可选。用于 OpenCode Go 的 x-opencode-session，或自建网关需要的额外请求头
+                                                </span>
+                                            </label>
+                                            {(() => {
+                                                const entries: [string, string][] = Object.entries(config.customHeaders || {}).map(([k, v]) => [k, String(v)]);
+                                                const setEntry = (oldKey: string, newKey: string, newValue: string) => {
+                                                    const next: Record<string, string> = {};
+                                                    for (const [k, v] of entries) {
+                                                        if (k === oldKey) {
+                                                            if (newKey.trim()) next[newKey.trim()] = newValue;
+                                                        } else {
+                                                            next[k] = v;
+                                                        }
+                                                    }
+                                                    updateConfig(config.id, { customHeaders: next });
+                                                };
+                                                const removeEntry = (key: string) => {
+                                                    const next: Record<string, string> = {};
+                                                    for (const [k, v] of entries) if (k !== key) next[k] = v;
+                                                    updateConfig(config.id, { customHeaders: next });
+                                                };
+                                                const addEntry = () => {
+                                                    let name = "x-opencode-session";
+                                                    if (config.customHeaders && config.customHeaders[name] !== undefined) {
+                                                        name = "";
+                                                    }
+                                                    updateConfig(config.id, { customHeaders: { ...(config.customHeaders || {}), [name]: "" } });
+                                                };
+                                                return (
+                                                    <div className="flex flex-col gap-2">
+                                                        {entries.length === 0 && (
+                                                            <span className="menu-desc ml-1" style={{ opacity: 0.7 }}>
+                                                                未添加。点击下方按钮可添加一条。
+                                                            </span>
+                                                        )}
+                                                        {entries.map(([k, v]) => (
+                                                            <div className="flex gap-2" key={k}>
+                                                                <input
+                                                                    type="text"
+                                                                    value={k}
+                                                                    onChange={(e) => setEntry(k, e.target.value, v)}
+                                                                    placeholder="请求头名称"
+                                                                    className="ui-input flex-1"
+                                                                />
+                                                                <input
+                                                                    type="text"
+                                                                    value={v}
+                                                                    onChange={(e) => setEntry(k, k, e.target.value)}
+                                                                    placeholder="值"
+                                                                    className="ui-input flex-1"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeEntry(k)}
+                                                                    className="ui-btn ui-btn-soft-action shrink-0"
+                                                                    aria-label="删除该请求头"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        <button
+                                                            type="button"
+                                                            onClick={addEntry}
+                                                            className="ui-btn ui-btn-soft-action self-start"
+                                                        >
+                                                            <Plus size={16} />
+                                                            添加请求头
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">默认模型 (Default Model)</label>
                                             <div className="flex gap-2">
@@ -471,3 +550,4 @@ export function ApiSettings() {
         </div>
     );
 }
+
