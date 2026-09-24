@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";
-import { BookOpen, Check, ChevronDown, Code2, SlidersHorizontal, UserRound, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Code2, Cpu, SlidersHorizontal, UserRound, X } from "lucide-react";
 import { CHAT_APP_SETTINGS_UPDATED_EVENT, loadChatAppSettings } from "@/lib/chat-storage";
 import {
     getFloatingDockState,
@@ -17,6 +17,7 @@ import {
     loadApiConfigs,
     loadBindingConfig,
     loadWorldBooks,
+    saveApiConfigs,
     saveBindingConfig,
     setCharacterBinding,
 } from "@/lib/settings-storage";
@@ -250,6 +251,27 @@ export function QuickActionFloat() {
             : [...selectedWorldBookIds, worldBookId];
         updateWorldBooks(next);
     }, [selectedWorldBookIds, updateWorldBooks]);
+
+    /** 当前生效的 API 配置：本层绑定优先，否则回落全局默认（与 resolveBinding 同口径的简化版） */
+    const activeApiConfigId = currentSlot.apiConfigId || config.globalDefaults.apiConfigId;
+    const activeApiConfig = apiConfigs.find(item => item.id === activeApiConfigId) || null;
+    // 可切换模型 = 该配置保存的模型列表 ∪ 当前生效模型（兼容只填过默认模型的旧配置）
+    const activeModelOptions = activeApiConfig
+        ? Array.from(new Set([
+            ...(activeApiConfig.models || []),
+            ...(activeApiConfig.defaultModel ? [activeApiConfig.defaultModel] : []),
+        ]))
+        : [];
+
+    /** 切换当前生效配置的模型：改的是配置的 defaultModel，绑定该配置的所有场景立即跟着切 */
+    const updateApiModel = useCallback((modelName: string) => {
+        if (!activeApiConfigId || !modelName) return;
+        const next = apiConfigs.map(item => item.id === activeApiConfigId
+            ? { ...item, defaultModel: modelName }
+            : item);
+        setApiConfigs(next);
+        saveApiConfigs(next);
+    }, [activeApiConfigId, apiConfigs]);
 
     function getFloatingButtonBounds(button: HTMLButtonElement, currentPos: FloatingPosition | null) {
         const parent = button.offsetParent instanceof HTMLElement ? button.offsetParent : null;
@@ -545,6 +567,36 @@ export function QuickActionFloat() {
                                 ))}
                             </div>
                         </section>
+
+                        {/* 模型切换：同一链接（当前生效配置）下保存的多个模型直接切，
+                            改的是配置的 defaultModel，聊天/剧情等所有绑定该配置的场景立即生效 */}
+                        {activeApiConfig && activeModelOptions.length > 0 ? (
+                            <section className="quick-action-section">
+                                <div className="quick-action-section-heading">
+                                    <span><Cpu size={16} />模型</span>
+                                    <small>{activeApiConfig.defaultModel || "未设置"}</small>
+                                </div>
+                                <div className="quick-action-option-list">
+                                    {activeModelOptions.map(modelName => (
+                                        <button
+                                            type="button"
+                                            key={modelName}
+                                            className="quick-action-option"
+                                            data-selected={activeApiConfig.defaultModel === modelName}
+                                            onClick={() => updateApiModel(modelName)}
+                                        >
+                                            <span>{modelName}</span>
+                                            {activeApiConfig.defaultModel === modelName ? <Check size={15} /> : null}
+                                        </button>
+                                    ))}
+                                </div>
+                                {(activeApiConfig.models?.length ?? 0) === 0 ? (
+                                    <div className="quick-action-empty">
+                                        列表里只有默认模型。到 设置 → API 设置 → 编辑该配置 → 「拉取模型列表」后，这里会出现全部可切换模型
+                                    </div>
+                                ) : null}
+                            </section>
+                        ) : null}
 
                         <section className="quick-action-section" data-disabled={characterDisabled ? "" : undefined}>
                             <div className="quick-action-section-heading">
