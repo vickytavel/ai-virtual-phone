@@ -25,6 +25,7 @@ export function resolveVoiceConfig(characterId: string, appId?: ContentAppId): V
  * Supported providers:
  * - Minimax: REST API → hex-encoded mp3
  * - OpenAI: REST API → binary audio blob
+ * - ElevenLabs: REST API → binary audio blob (xi-api-key 鉴权)
  */
 export async function synthesizeSpeech(
     text: string,
@@ -41,6 +42,10 @@ export async function synthesizeSpeech(
 
     if (provider === "OpenAI") {
         return synthesizeOpenAI(text, voiceConfig);
+    }
+
+    if (provider === "ElevenLabs") {
+        return synthesizeElevenLabs(text, voiceConfig);
     }
 
     return null;
@@ -168,6 +173,60 @@ async function synthesizeOpenAI(text: string, config: VoiceApiConfig): Promise<B
     if (!response.ok) {
         const errText = await response.text().catch(() => "");
         throw new Error(`OpenAI TTS 请求失败 (${response.status}): ${errText}`);
+    }
+
+    const blob = await response.blob();
+    return new Blob([await blob.arrayBuffer()], { type: "audio/mpeg" });
+}
+
+// ── ElevenLabs TTS ─────────────────────────────────
+
+export const ELEVENLABS_DEFAULT_BASE_URL = "https://api.elevenlabs.io/v1";
+
+/**
+ * 规范化 ElevenLabs 接口地址：去尾斜杠，末尾不是 /v{N} 时自动补 /v1。
+ * 用户填 https://api.elevenlabs.io 或官方全址都能用。
+ */
+function elevenLabsApiBase(baseUrl?: string): string {
+    const raw = (baseUrl || "").trim().replace(/\/+$/, "");
+    if (!raw) return ELEVENLABS_DEFAULT_BASE_URL;
+    return /\/v\d+$/.test(raw) ? raw : `${raw}/v1`;
+}
+
+async function synthesizeElevenLabs(text: string, config: VoiceApiConfig): Promise<Blob | null> {
+    const apiKey = config.apiKey?.trim();
+    if (!apiKey) throw new Error("ElevenLabs API Key 未配置");
+    const voiceId = (config.defaultVoice || "").trim();
+    if (!voiceId) throw new Error("ElevenLabs Voice ID 未配置（音色栏填你的 Voice ID）");
+
+    const base = elevenLabsApiBase(config.baseUrl);
+    const response = await fetchWithTimeout(`${base}/text-to-speech/${encodeURIComponent(voiceId)}`, {
+        method: "POST",
+        headers: {
+            "xi-api-key": apiKey,
+            "Content-Type": "application/json",
+            Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({
+            text,
+            model_id: (config.model || "").trim() || "eleven_multilingual_v2",
+        }),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        let message = errText;
+        try {
+            const parsed = JSON.parse(errText) as Record<string, unknown>;
+            const detail = parsed?.detail;
+            if (typeof detail === "string") message = detail;
+            else if (detail && typeof detail === "object") {
+                const d = detail as Record<string, unknown>;
+                message = String(d.message || d.status || "");
+            }
+            if (!message) message = String(parsed?.message || errText);
+        } catch { /* 保留原始文本 */ }
+        throw new Error(`ElevenLabs TTS 请求失败 (${response.status}): ${String(message).slice(0, 300)}`);
     }
 
     const blob = await response.blob();
